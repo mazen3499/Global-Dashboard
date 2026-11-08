@@ -1,0 +1,17 @@
+[theme]
+base = "dark"
+primaryColor = "#6D5EF6"
+backgroundColor = "#000000"
+secondaryBackgroundColor = "#0A0A0C"
+textColor = "#F5F5F7"
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+
+[server]
+# Serves ./static at /app/static: the bundled fonts load once and are cached by the browser
+# instead of being inlined into the CSS that Streamlit resends on every rerun.
+enableStaticServing = true
