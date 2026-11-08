@@ -1,0 +1,9 @@
+{
+  "source": "global_cleaned.csv",
+  "source_sha256": "fe83c18aa8f2ac1ff067b2e304efdc10b974fa4b74f7b0eef9f4df85ea3d3ac8",
+  "rows": 111855,
+  "columns": 54,
+  "built_at": "2026-11-01T22:08:18+00:00",
+  "pandas": "3.0.5",
+  "pyarrow": "26.0.0"
+}
