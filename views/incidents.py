@@ -28,10 +28,35 @@ def _records_table(rec: pd.DataFrame) -> str:
     def num(v) -> str:
         return "<span title='not reported'>&ndash;</span>" if pd.isna(v) else f"{int(v):,}"
 
-    rows = [[esc(r.date), f'<b data-filter-val="{esc(r.country)}" style="cursor:pointer" title="{esc(r.place)}">{esc(r.place)}</b>',
-             f'<span data-filter-val="{esc(r.attack)}" style="cursor:pointer" title="{esc(r.attack)} on {esc(r.target)}">{esc(charts.short(r.attack, 16))}</span>',
-             f'<span data-filter-val="{esc(r.group)}" style="cursor:pointer" title="{esc(r.group)}">{esc(charts.short(r.group, 18))}</span>', num(r.killed), num(r.injured)]
-            for r in rec.itertuples()]
+    rows = []
+    for r in rec.itertuples():
+        date_val = getattr(r, "date", "")
+        place_val = getattr(r, "place", getattr(r, "country_txt", getattr(r, "country", "")))
+        country_val = getattr(
+            r,
+            "country",
+            getattr(
+                r,
+                "country_txt",
+                str(place_val).split(",")[-1].strip() if "," in str(place_val) else place_val,
+            ),
+        )
+        attack_val = getattr(r, "attack", getattr(r, "attacktype1_txt", ""))
+        target_val = getattr(r, "target", getattr(r, "targtype1_txt", ""))
+        group_val = getattr(r, "group", getattr(r, "gname", ""))
+        killed_val = getattr(r, "killed", getattr(r, "nkill", float("nan")))
+        injured_val = getattr(r, "injured", getattr(r, "nwound", float("nan")))
+        attack_title = f"{esc(attack_val)} on {esc(target_val)}" if target_val else esc(attack_val)
+
+        rows.append([
+            esc(date_val),
+            f'<b data-filter-val="{esc(country_val)}" style="cursor:pointer" title="{esc(place_val)}">{esc(place_val)}</b>',
+            f'<span data-filter-val="{esc(attack_val)}" style="cursor:pointer" title="{attack_title}">{esc(charts.short(attack_val, 16))}</span>',
+            f'<span data-filter-val="{esc(group_val)}" style="cursor:pointer" title="{esc(group_val)}">{esc(charts.short(group_val, 18))}</span>',
+            num(killed_val),
+            num(injured_val),
+        ])
+
     cols = [("Date", ""), ("Location", "w"), ("Attack", ""), ("Group", ""), ("Killed", "n"), ("Injured", "n")]
     return theme.table_html(cols, rows)
 
@@ -77,15 +102,4 @@ def render(ctx: ui.Ctx) -> None:
                 if query:
                     st.button(f'Clear search "{query}"', key="rec_clear", icon=":material/close:",
                               on_click=lambda: st.session_state.update(rec_query="", q="", rec_page=1))
-                if len(rec):
-                    st.html(_records_table(rec.iloc[start:start + PAGE_SIZE]))
-                else:
-                    st.html(theme.empty_html("No incident matches the search in this selection.", "No matching incidents"))
-        with c2:
-            matrix, excluded = ctx.agg("attack_target_matrix", 6)
-            with ui.panel("i_matrix", "Attack Type by Target", f"Incident counts for the six most common target types. "
-                          f"{excluded:,} incidents with an unknown attack or target type are excluded."):
-                if len(matrix):
-                    ui.plot(charts.heatmap_fig(matrix, ctx.pal, col_len=11), "i_matrix")
-                else:
-                    st.html(theme.empty_html("Not enough labelled incidents in this selection.", ""))
+                if len
