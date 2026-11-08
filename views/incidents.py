@@ -28,35 +28,17 @@ def _records_table(rec: pd.DataFrame) -> str:
     def num(v) -> str:
         return "<span title='not reported'>&ndash;</span>" if pd.isna(v) else f"{int(v):,}"
 
-    rows = []
-    for r in rec.itertuples():
-        date_val = getattr(r, "date", "")
-        place_val = getattr(r, "place", getattr(r, "country_txt", getattr(r, "country", "")))
-        country_val = getattr(
-            r,
-            "country",
-            getattr(
-                r,
-                "country_txt",
-                str(place_val).split(",")[-1].strip() if "," in str(place_val) else place_val,
-            ),
-        )
-        attack_val = getattr(r, "attack", getattr(r, "attacktype1_txt", ""))
-        target_val = getattr(r, "target", getattr(r, "targtype1_txt", ""))
-        group_val = getattr(r, "group", getattr(r, "gname", ""))
-        killed_val = getattr(r, "killed", getattr(r, "nkill", float("nan")))
-        injured_val = getattr(r, "injured", getattr(r, "nwound", float("nan")))
-        attack_title = f"{esc(attack_val)} on {esc(target_val)}" if target_val else esc(attack_val)
-
-        rows.append([
-            esc(date_val),
-            f'<b data-filter-val="{esc(country_val)}" style="cursor:pointer" title="{esc(place_val)}">{esc(place_val)}</b>',
-            f'<span data-filter-val="{esc(attack_val)}" style="cursor:pointer" title="{attack_title}">{esc(charts.short(attack_val, 16))}</span>',
-            f'<span data-filter-val="{esc(group_val)}" style="cursor:pointer" title="{esc(group_val)}">{esc(charts.short(group_val, 18))}</span>',
-            num(killed_val),
-            num(injured_val),
-        ])
-
+    rows = [
+        [
+            esc(r.date),
+            f'<b data-filter-val="{esc(getattr(r, "country", getattr(r, "country_txt", r.place)))}" style="cursor:pointer" title="{esc(r.place)}">{esc(r.place)}</b>',
+            f'<span data-filter-val="{esc(r.attack)}" style="cursor:pointer" title="{esc(r.attack)} on {esc(r.target)}">{esc(charts.short(r.attack, 16))}</span>',
+            f'<span data-filter-val="{esc(r.group)}" style="cursor:pointer" title="{esc(r.group)}">{esc(charts.short(r.group, 18))}</span>',
+            num(r.killed),
+            num(r.injured),
+        ]
+        for r in rec.itertuples()
+    ]
     cols = [("Date", ""), ("Location", "w"), ("Attack", ""), ("Group", ""), ("Killed", "n"), ("Injured", "n")]
     return theme.table_html(cols, rows)
 
@@ -80,26 +62,73 @@ def render(ctx: ui.Ctx) -> None:
             page = min(st.session_state.get("rec_page", 1), pages)
             start = (page - 1) * PAGE_SIZE
             found = f"{len(rec):,} incidents" + (f' matching "{query}"' if query else "")
-            with ui.panel_with_control("records", "Incident Records", "Every incident in the selection. Search with the box at "
-                                       "the top (city, country, group, target or event ID). Killed and injured are valid counts; "
-                                       "a dash means not reported.", subtitle=f"{found}; rows {start + 1:,}-{min(start + PAGE_SIZE, len(rec)):,}",
-                                       ratio=(4, 5)) as ctl:
+            with ui.panel_with_control(
+                "records",
+                "Incident Records",
+                "Every incident in the selection. Search with the box at "
+                "the top (city, country, group, target or event ID). Killed and injured are valid counts; "
+                "a dash means not reported.",
+                subtitle=f"{found}; rows {start + 1:,}-{min(start + PAGE_SIZE, len(rec)):,}",
+                ratio=(4, 5),
+            ) as ctl:
                 with ctl:
                     a, b, c, d = st.columns([3.2, 1, 1, 2.2], vertical_alignment="center")
                     with a:
-                        st.selectbox("Sort", list(core.RECORD_SORTS), key="rec_sort", label_visibility="collapsed",
-                                     on_change=lambda: st.session_state.update(rec_page=1))
+                        st.selectbox(
+                            "Sort",
+                            list(core.RECORD_SORTS),
+                            key="rec_sort",
+                            label_visibility="collapsed",
+                            on_change=lambda: st.session_state.update(rec_page=1),
+                        )
                     with b:
-                        st.button("", icon=":material/chevron_left:", key="rec_prev", disabled=page <= 1, help="Previous page",
-                                  on_click=lambda: st.session_state.update(rec_page=page - 1))
+                        st.button(
+                            "",
+                            icon=":material/chevron_left:",
+                            key="rec_prev",
+                            disabled=page <= 1,
+                            help="Previous page",
+                            on_click=lambda: st.session_state.update(rec_page=page - 1),
+                        )
                     with c:
-                        st.button("", icon=":material/chevron_right:", key="rec_next", disabled=page >= pages, help="Next page",
-                                  on_click=lambda: st.session_state.update(rec_page=page + 1))
+                        st.button(
+                            "",
+                            icon=":material/chevron_right:",
+                            key="rec_next",
+                            disabled=page >= pages,
+                            help="Next page",
+                            on_click=lambda: st.session_state.update(rec_page=page + 1),
+                        )
                     with d:
-                        st.download_button("CSV", rec.to_csv(index=False).encode(), file_name="gtd_incidents_selection.csv",
-                                           mime="text/csv", icon=":material/download:", key="rec_csv",
-                                           help="Download every incident in the selection (current search and sort)")
+                        st.download_button(
+                            "CSV",
+                            rec.to_csv(index=False).encode(),
+                            file_name="gtd_incidents_selection.csv",
+                            mime="text/csv",
+                            icon=":material/download:",
+                            key="rec_csv",
+                            help="Download every incident in the selection (current search and sort)",
+                        )
                 if query:
-                    st.button(f'Clear search "{query}"', key="rec_clear", icon=":material/close:",
-                              on_click=lambda: st.session_state.update(rec_query="", q="", rec_page=1))
-                if len
+                    st.button(
+                        f'Clear search "{query}"',
+                        key="rec_clear",
+                        icon=":material/close:",
+                        on_click=lambda: st.session_state.update(rec_query="", q="", rec_page=1),
+                    )
+                if len(rec):
+                    st.html(_records_table(rec.iloc[start : start + PAGE_SIZE]))
+                else:
+                    st.html(theme.empty_html("No incident matches the search in this selection.", "No matching incidents"))
+        with c2:
+            matrix, excluded = ctx.agg("attack_target_matrix", 6)
+            with ui.panel(
+                "i_matrix",
+                "Attack Type by Target",
+                f"Incident counts for the six most common target types. "
+                f"{excluded:,} incidents with an unknown attack or target type are excluded.",
+            ):
+                if len(matrix):
+                    ui.plot(charts.heatmap_fig(matrix, ctx.pal, col_len=11), "i_matrix")
+                else:
+                    st.html(theme.empty_html("Not enough labelled incidents in this selection.", ""))
