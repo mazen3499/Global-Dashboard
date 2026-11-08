@@ -146,6 +146,89 @@ def _shield() -> str:
 
 
 # --------------------------------------------------------------------------------------
+# 3D self-folding animated globe (inline base64 so it works everywhere without static serving)
+# --------------------------------------------------------------------------------------
+@functools.lru_cache(maxsize=4)
+def _globe_data_uris(mode: str) -> tuple[str, str]:
+    p = palette(mode)
+    stroke_main = "#6D5EF6" if mode == "dark" else "#4F46E5"
+    stroke_sub = "#8B5CF6" if mode == "dark" else "#6366F1"
+    stroke_red = "#EF3B4F"
+    glow_op = "0.28" if mode == "dark" else "0.14"
+
+    # 1. Base globe: read bundled static SVG if available, otherwise build a rich wireframe base
+    svg_path = ROOT / "static" / p["globe"]
+    if not svg_path.exists():
+        svg_path = ASSETS / p["globe"]
+    if svg_path.exists():
+        raw_base = svg_path.read_bytes()
+    else:
+        fallback_svg = (
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320">'
+            f'<circle cx="160" cy="160" r="132" fill="none" stroke="{stroke_main}" stroke-width="1.2" opacity="0.45"/>'
+            f'<circle cx="160" cy="160" r="98" fill="none" stroke="{stroke_sub}" stroke-width="1" stroke-dasharray="4 6" opacity="0.4"/>'
+            f'</svg>'
+        )
+        raw_base = fallback_svg.encode("utf-8")
+
+    # 2. Inner 3D self-folding core: meridian rings continuously morph rx (126 -> 4 -> 126)
+    #    and counter-rotate so the globe folds into itself in 3D space.
+    core_svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320">
+    <defs>
+      <radialGradient id="gGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="{stroke_main}" stop-opacity="{glow_op}"/>
+        <stop offset="65%" stop-color="{stroke_sub}" stop-opacity="0.08"/>
+        <stop offset="100%" stop-color="{stroke_main}" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <circle cx="160" cy="160" r="145" fill="url(#gGlow)"/>
+    <g transform="rotate(-22 160 160)">
+      <circle cx="160" cy="160" r="134" fill="none" stroke="{stroke_main}" stroke-width="1.3" stroke-dasharray="8 6" opacity="0.55">
+        <animateTransform attributeName="transform" type="rotate" from="0 160 160" to="360 160 160" dur="24s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="160" cy="160" r="126" fill="none" stroke="{stroke_sub}" stroke-width="1.1" opacity="0.45"/>
+      <!-- Latitude rings -->
+      <ellipse cx="160" cy="160" rx="126" ry="42" fill="none" stroke="{stroke_main}" stroke-width="1" stroke-dasharray="5 5" opacity="0.45"/>
+      <ellipse cx="160" cy="122" rx="108" ry="28" fill="none" stroke="{stroke_sub}" stroke-width="0.9" opacity="0.35"/>
+      <ellipse cx="160" cy="198" rx="108" ry="28" fill="none" stroke="{stroke_sub}" stroke-width="0.9" opacity="0.35"/>
+      <!-- Self-folding 3D meridians (staggered rx morphing) -->
+      <ellipse cx="160" cy="160" rx="126" ry="126" fill="none" stroke="{stroke_main}" stroke-width="1.3" opacity="0.65">
+        <animate attributeName="rx" values="126;4;126" dur="8s" begin="0s" repeatCount="indefinite"/>
+      </ellipse>
+      <ellipse cx="160" cy="160" rx="90" ry="126" fill="none" stroke="{stroke_sub}" stroke-width="1.2" opacity="0.55">
+        <animate attributeName="rx" values="126;4;126" dur="8s" begin="-2s" repeatCount="indefinite"/>
+      </ellipse>
+      <ellipse cx="160" cy="160" rx="45" ry="126" fill="none" stroke="{stroke_main}" stroke-width="1.2" opacity="0.55">
+        <animate attributeName="rx" values="126;4;126" dur="8s" begin="-4s" repeatCount="indefinite"/>
+      </ellipse>
+      <ellipse cx="160" cy="160" rx="15" ry="126" fill="none" stroke="{stroke_sub}" stroke-width="1.2" opacity="0.55">
+        <animate attributeName="rx" values="126;4;126" dur="8s" begin="-6s" repeatCount="indefinite"/>
+      </ellipse>
+      <!-- Inner gyroscopic ring folding into the core -->
+      <ellipse cx="160" cy="160" rx="96" ry="96" fill="none" stroke="{stroke_red}" stroke-width="1.1" stroke-dasharray="3 7" opacity="0.55">
+        <animate attributeName="ry" values="96;12;96" dur="6s" repeatCount="indefinite"/>
+        <animateTransform attributeName="transform" type="rotate" from="360 160 160" to="0 160 160" dur="14s" repeatCount="indefinite"/>
+      </ellipse>
+      <!-- Tactical pulse nodes -->
+      <circle cx="215" cy="118" r="3.2" fill="{stroke_red}">
+        <animate attributeName="r" values="2.2;4.5;2.2" dur="2.4s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.95;0.35;0.95" dur="2.4s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="125" cy="96" r="2.8" fill="{stroke_main}">
+        <animate attributeName="r" values="2;4;2" dur="3.1s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="238" cy="172" r="2.6" fill="{stroke_red}">
+        <animate attributeName="opacity" values="0.3;1;0.3" dur="1.9s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+    </svg>"""
+
+    uri_base = "url(\"data:image/svg+xml;base64," + base64.b64encode(raw_base).decode() + "\")"
+    uri_core = "url(\"data:image/svg+xml;base64," + base64.b64encode(core_svg.encode("utf-8")).decode() + "\")"
+    return uri_base, uri_core
+
+
+# --------------------------------------------------------------------------------------
 # CSS
 # --------------------------------------------------------------------------------------
 @functools.lru_cache(maxsize=1)
@@ -165,8 +248,9 @@ def font_face_css() -> str:
 
 def _root_vars(mode: str) -> str:
     p = palette(mode)
+    globe_base, globe_core = _globe_data_uris(mode)
     v = {f"--{k.replace('_', '-')}": val for k, val in p.items() if isinstance(val, str) and k not in ("globe",)}
-    v.update({"--sans": FONT_SANS, "--globe": f"url({STATIC_URL}/{p['globe']})",
+    v.update({"--sans": FONT_SANS, "--globe": globe_base, "--globe-core": globe_core,
               "--side-w": "220px", "--pad-t": "14px", "--pad-b": "8px", "--head": "52px", "--kpi": "72px",
               "--gap": "12px", "--foot": "16px", "--radius": "12px"})
     scheme = "dark" if mode == "dark" else "light"
@@ -280,11 +364,30 @@ div[class*="st-key-p_"] [data-testid="stFullScreenFrame"], div[class*="st-key-p_
 .ps{font-size:11.5px;color:var(--text3);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:-2px}
 .fill{height:100%}
 
-/* ---------- sidebar: brand, navigation, globe ---------- */
+/* ---------- sidebar: brand, navigation, 3D self-folding globe ---------- */
+@keyframes aegisGlobeOuter {
+  0%   { transform: perspective(520px) rotateZ(0deg) rotateX(14deg) rotateY(-12deg) scale(1); }
+  50%  { transform: perspective(520px) rotateZ(180deg) rotateX(-14deg) rotateY(12deg) scale(0.91); }
+  100% { transform: perspective(520px) rotateZ(360deg) rotateX(14deg) rotateY(-12deg) scale(1); }
+}
+@keyframes aegisGlobeInner {
+  0%   { transform: perspective(520px) rotateZ(360deg) rotateX(-18deg) rotateY(18deg) scale(0.84); opacity: 0.78; }
+  50%  { transform: perspective(520px) rotateZ(180deg) rotateX(18deg) rotateY(-18deg) scale(1.05); opacity: 0.98; }
+  100% { transform: perspective(520px) rotateZ(0deg) rotateX(-18deg) rotateY(18deg) scale(0.84); opacity: 0.78; }
+}
 section[data-testid="stSidebar"]{background:var(--side) !important;border-right:1px solid var(--line) !important}
 @media (min-width: 1180px){ section[data-testid="stSidebar"]{width:var(--side-w) !important;min-width:var(--side-w) !important;max-width:var(--side-w) !important} }
 section[data-testid="stSidebar"]{overflow:hidden}
-section[data-testid="stSidebar"]::after{content:"";position:absolute;left:-70px;right:0;bottom:-110px;height:330px;background:var(--globe) center/contain no-repeat;opacity:.85;pointer-events:none}
+section[data-testid="stSidebar"]::before{
+  content:"";position:absolute;left:-85px;bottom:-110px;width:330px;height:330px;
+  background:var(--globe) center/contain no-repeat;opacity:.82;pointer-events:none;
+  transform-origin:50% 50%;animation:aegisGlobeOuter 34s linear infinite;will-change:transform;
+}
+section[data-testid="stSidebar"]::after{
+  content:"";position:absolute;left:-85px;bottom:-110px;width:330px;height:330px;
+  background:var(--globe-core) center/contain no-repeat;opacity:.92;pointer-events:none;
+  transform-origin:50% 50%;animation:aegisGlobeInner 22s ease-in-out infinite;will-change:transform,opacity;
+}
 [data-testid="stSidebarContent"]{padding:0 !important;position:relative;z-index:1}
 [data-testid="stSidebarUserContent"]{padding:22px 14px 12px !important}
 [data-testid="stSidebar"] [data-testid="stVerticalBlock"]{gap:10px !important}
